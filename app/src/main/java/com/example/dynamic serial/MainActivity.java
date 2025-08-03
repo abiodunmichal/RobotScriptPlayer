@@ -1,102 +1,92 @@
-package com.example.dynamicserial;
+package com.example.geobot;
 
-import android.Manifest;
-import android.app.PendingIntent;
-import android.content.BroadcastReceiver;
-import android.content.Context;
+import android.app.Activity;
 import android.content.Intent;
-import android.content.IntentFilter;
-import android.hardware.usb.UsbDevice;
-import android.hardware.usb.UsbManager;
+import android.net.Uri;
 import android.os.Bundle;
-import android.os.Environment;
-import android.view.View;
-import android.widget.TextView;
-import android.widget.Toast;
+import android.provider.DocumentsContract;
 import android.widget.Button;
-
+import android.widget.TextView;
+import android.widget.ScrollView;
+import android.database.Cursor;
+import android.widget.Toast;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-
-import java.util.HashMap;
+import java.io.BufferedReader;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final String ACTION_USB_PERMISSION = "com.example.dynamicserial.USB_PERMISSION";
+    private static final int PICK_FILE_REQUEST_CODE = 1;
+
     private TextView debugText;
-    private StringBuilder logBuilder = new StringBuilder();
+    private ScrollView scrollView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        
         debugText = findViewById(R.id.debugText);
+        scrollView = findViewById(R.id.scrollView);
 
-        ActivityCompat.requestPermissions(this, new String[]{
-                Manifest.permission.WRITE_EXTERNAL_STORAGE
-        }, 1);
-
-        appendLog("App started. Scanning USB devices...");
-        findSerialDevice();
-
-        // Save log when tapped
-        debugText.setOnClickListener(view -> {
-            FileUtils.saveLogToFile(MainActivity.this, logBuilder.toString());
-            appendLog("Log saved to Downloads.");
-        });
+        Button pickFileButton = findViewById(R.id.pickFileButton);
+        pickFileButton.setOnClickListener(v -> openFilePicker());
     }
 
-    private void findSerialDevice() {
-        UsbManager usbManager = (UsbManager) getSystemService(Context.USB_SERVICE);
-        HashMap<String, UsbDevice> deviceList = usbManager.getDeviceList();
-
-        if (deviceList.isEmpty()) {
-            appendLog("No USB devices found.");
-            return;
-        }
-
-        for (UsbDevice device : deviceList.values()) {
-            appendLog("USB device detected: " + device.getDeviceName());
-
-            PendingIntent permissionIntent = PendingIntent.getBroadcast(this, 0,
-                    new Intent(ACTION_USB_PERMISSION), PendingIntent.FLAG_IMMUTABLE);
-
-            IntentFilter filter = new IntentFilter(ACTION_USB_PERMISSION);
-            registerReceiver(usbReceiver, filter);
-
-            usbManager.requestPermission(device, permissionIntent);
-            break;
-        }
-    }
-
-    private final BroadcastReceiver usbReceiver = new BroadcastReceiver() {
-        public void onReceive(Context context, Intent intent) {
-            if (ACTION_USB_PERMISSION.equals(intent.getAction())) {
-                synchronized (this) {
-                    UsbDevice device = intent.getParcelableExtra(UsbManager.EXTRA_DEVICE);
-                    if (intent.getBooleanExtra(UsbManager.EXTRA_PERMISSION_GRANTED, false)) {
-                        if (device != null) {
-                            appendLog("Permission granted for device: " + device.getDeviceName());
-                            // TODO: Initialize serial connection here
-                        }
-                    } else {
-                        appendLog("Permission denied for device.");
-                    }
-                }
-            }
-        }
-    };
-
-    private void appendLog(String text) {
-        logBuilder.append(text).append("\n");
-        debugText.setText(logBuilder.toString());
+    private void openFilePicker() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+        intent.setType("*/*");
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        String[] mimeTypes = {"text/plain", "application/octet-stream"};
+        intent.putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes);
+        startActivityForResult(intent, PICK_FILE_REQUEST_CODE);
     }
 
     @Override
-    protected void onDestroy() {
-        super.onDestroy();
-        try {
-            unregisterReceiver(usbReceiver);
-        } catch (Exception ignored) {}
+    protected void onActivityResult(int requestCode, int resultCode, @Nullable Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+
+        if (requestCode == PICK_FILE_REQUEST_CODE && resultCode == Activity.RESULT_OK) {
+            if (data != null) {
+                Uri uri = data.getData();
+                readLuaFile(uri);
+            }
+        }
     }
-                            }
+
+    private void readLuaFile(Uri uri) {
+        try {
+            InputStream inputStream = getContentResolver().openInputStream(uri);
+            BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            StringBuilder fileContent = new StringBuilder();
+            String line;
+            while ((line = reader.readLine()) != null) {
+                fileContent.append(line).append("\n");
+            }
+            reader.close();
+
+            appendToLog("File content loaded:");
+            appendToLog(fileContent.toString());
+
+            // Placeholder for Lua interpreter execution
+            runLuaScript(fileContent.toString());
+
+        } catch (Exception e) {
+            appendToLog("Error reading file: " + e.getMessage());
+        }
+    }
+
+    private void runLuaScript(String script) {
+        // This is where you’ll later add Lua execution logic
+        appendToLog("Pretending to run script... (Lua engine to be added)");
+    }
+
+    private void appendToLog(String text) {
+        runOnUiThread(() -> {
+            debugText.append(text + "\n");
+            scrollView.post(() -> scrollView.fullScroll(ScrollView.FOCUS_DOWN));
+        });
+    }
+    }
